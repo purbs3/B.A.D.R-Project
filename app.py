@@ -1,5 +1,6 @@
 import os
-os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'   # Protobuf फिक्स
+# Protobuf फिक्स - यह MediaPipe को Python मोड में चलाता है
+os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
 import streamlit as st
 import pandas as pd
@@ -14,7 +15,11 @@ from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfigura
 import av
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
+
+# ---------- MediaPipe को स्टैण्डर्ड तरीके से इम्पोर्ट करें ----------
+import mediapipe as mp
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
 
 # ---------- पेज कॉन्फ़िग ----------
 st.set_page_config(
@@ -188,18 +193,6 @@ def save_patients():
 
 def save_assessments():
     pd.DataFrame(st.session_state.assessments).to_csv('assessments.csv', index=False)
-
-# ---------- 🔥 FIX: MediaPipe Import with Fallback ----------
-try:
-    import mediapipe as mp
-    mp_pose = mp.solutions.pose
-    mp_drawing = mp.solutions.drawing_utils
-    print("Using mp.solutions")
-except AttributeError:
-    # Fallback: direct import from internal module
-    from mediapipe.python.solutions import pose as mp_pose
-    from mediapipe.python.solutions import drawing_utils as mp_drawing
-    print("Using direct import")
 
 # ---------- AI Engine ----------
 class KalmanFilter:
