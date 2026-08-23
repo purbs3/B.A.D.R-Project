@@ -66,7 +66,7 @@ if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
     st.session_state.user = None
 
-# ---------- CSS थीम (वही Government Grade) ----------
+# ---------- CSS थीम ----------
 st.markdown("""
 <style>
     .stApp { background-color: #F4F7FC; }
@@ -141,7 +141,7 @@ st.markdown(f"""
     </div>
     <div style="text-align:right; color:#D4AF37;">
         <span class="badge-clinical">Govt. Hospital & Sports Med</span>
-        <div style="color:#B0C4DE; font-size:0.8rem;">Offline | Secure</div>
+        <div style="color:#B0C4DE; font-size:0.8rem;">YOLO AI Engine</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -190,7 +190,7 @@ def save_assessments():
     pd.DataFrame(st.session_state.assessments).to_csv('assessments.csv', index=False)
 
 # ====================================================================
-# 🧠 YOLOv8-Pose AI इंजन (100% Accurate, No AttributeError)
+# 🧠 YOLOv8-Pose AI इंजन (No AttributeError, Ever)
 # ====================================================================
 class KalmanFilter:
     def __init__(self):
@@ -209,10 +209,7 @@ def calculate_angle(a, b, c):
     angle = np.abs(rad * 180.0 / np.pi)
     return 360 - angle if angle > 180 else angle
 
-# YOLO COCO-Pose Keypoint मैपिंग (Index -> Body Part)
-# 5:Left Shoulder, 6:Right Shoulder, 7:Left Elbow, 8:Right Elbow
-# 9:Left Wrist, 10:Right Wrist, 11:Left Hip, 12:Right Hip
-# 13:Left Knee, 14:Right Knee, 15:Left Ankle, 16:Right Ankle
+# Keypoint indices for COCO pose
 KEYPOINTS = {
     'l_sh': 5, 'r_sh': 6, 'l_elbow': 7, 'r_elbow': 8,
     'l_wrist': 9, 'r_wrist': 10, 'l_hip': 11, 'r_hip': 12,
@@ -221,7 +218,7 @@ KEYPOINTS = {
 
 class BADRProcessor(VideoTransformerBase):
     def __init__(self, exercise_type="Squat"):
-        # YOLO मॉडल लोड करें (पहली बार ऑटो-डाउनलोड होगा)
+        # पहली बार यह मॉडल डाउनलोड करेगा (ऑटोमैटिक)
         self.model = YOLO('yolov8n-pose.pt')
         self.exercise_type = exercise_type
         self.kf_left = KalmanFilter()
@@ -236,20 +233,17 @@ class BADRProcessor(VideoTransformerBase):
         color = (0, 255, 255)
         l_ang = r_ang = 0
 
-        # YOLO से पोज़ डिटेक्ट करें
         results = self.model(img, verbose=False)[0]
-        
         if results.keypoints is not None and len(results.keypoints.xy) > 0:
-            kp = results.keypoints.xy[0].cpu().numpy()  # [17, 2] (x, y) normalized
+            kp = results.keypoints.xy[0].cpu().numpy()
             conf = results.keypoints.conf[0].cpu().numpy() if results.keypoints.conf is not None else None
 
-            try:
-                # सारे Keypoints निकालें (अगर Confidence > 0.5 है तो)
-                def get_xy(idx):
-                    if conf is not None and conf[idx] > 0.5:
-                        return (kp[idx][0] * w, kp[idx][1] * h)
-                    return None
+            def get_xy(idx):
+                if conf is not None and conf[idx] > 0.5:
+                    return (kp[idx][0] * w, kp[idx][1] * h)
+                return None
 
+            try:
                 l_sh = get_xy(KEYPOINTS['l_sh'])
                 r_sh = get_xy(KEYPOINTS['r_sh'])
                 l_elbow = get_xy(KEYPOINTS['l_elbow'])
@@ -263,9 +257,7 @@ class BADRProcessor(VideoTransformerBase):
                 l_ankle = get_xy(KEYPOINTS['l_ankle'])
                 r_ankle = get_xy(KEYPOINTS['r_ankle'])
 
-                # अगर जरूरी Keypoints मिल गए हैं तभी आगे बढ़ें
                 if all(v is not None for v in [l_hip, l_knee, l_ankle, r_hip, r_knee, r_ankle, l_sh, r_sh, l_elbow, r_elbow, l_wrist, r_wrist]):
-                    
                     if self.exercise_type == "Squat":
                         l_ang = calculate_angle(l_hip, l_knee, l_ankle)
                         r_ang = calculate_angle(r_hip, r_knee, r_ankle)
@@ -341,7 +333,7 @@ if page == "Clinical Dashboard":
     with col2:
         st.markdown(f"<div class='stat-box'><h2>{len(st.session_state.assessments)}</h2><p>Assessments Done</p></div>", unsafe_allow_html=True)
     with col3:
-        st.markdown(f"<div class='stat-box'><h2>B.A.D.R v5.0</h2><p>YOLO AI Engine</p></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='stat-box'><h2>B.A.D.R v5.0</h2><p>YOLO AI</p></div>", unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("Quick Assessment")
@@ -381,7 +373,7 @@ elif page == "Assessment":
                 })
                 save_assessments()
                 st.success("Assessment Saved!")
-    st.info("💡 Stand 6-8 feet away. Powered by YOLOv8-Pose (Ultra Accurate).")
+    st.info("💡 Stand 6-8 feet away. Powered by YOLOv8-Pose.")
 
 elif page == "Patient Records":
     st.markdown("## Patient Records")
