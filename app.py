@@ -13,7 +13,6 @@ import av
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-import pyttsx3  # Text-to-Speech (Offline)
 
 # ---------- पेज कॉन्फ़िग ----------
 st.set_page_config(
@@ -22,6 +21,25 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ====================================================================
+# 🎤 Web Speech API (Browser TTS) - Offline Voice Feedback
+# ====================================================================
+def speak_text(text):
+    """This injects JavaScript into the page to speak text using the browser's native speech engine."""
+    js_code = f"""
+    <script>
+    function speakNow() {{
+        var utterance = new SpeechSynthesisUtterance({text});
+        utterance.lang = 'hi-IN';
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        window.speechSynthesis.speak(utterance);
+    }}
+    speakNow();
+    </script>
+    """
+    st.markdown(js_code, unsafe_allow_html=True)
 
 # ---------- ऑफलाइन ऑथेंटिकेशन ----------
 def load_credentials():
@@ -88,14 +106,6 @@ st.markdown("""
     }
     .stat-box h2 { color: #0B2A4A; font-size: 2.2rem; font-weight: 800; margin: 0; }
     .stat-box p { color: #4B5563; font-weight: 500; margin: 0; }
-    .angle-guide {
-        background: #0B2A4A;
-        color: white;
-        padding: 10px 20px;
-        border-radius: 30px;
-        display: inline-block;
-        font-weight: bold;
-    }
     .footer {
         background: #0B2A4A;
         color: #B0C4DE;
@@ -194,7 +204,7 @@ def save_assessments():
     pd.DataFrame(st.session_state.assessments).to_csv('assessments.csv', index=False)
 
 # ====================================================================
-# 🧠 AI POSE ENGINE (MediaPipe + Kalman Filter for Accuracy)
+# 🧠 AI POSE ENGINE (MediaPipe + Kalman Filter)
 # ====================================================================
 from mediapipe.python.solutions import pose as mp_pose
 from mediapipe.python.solutions import drawing_utils as mp_drawing
@@ -202,7 +212,7 @@ from mediapipe.python.solutions import drawing_utils as mp_drawing
 class KalmanFilter:
     """Simple Kalman Filter for smoothing angle measurements"""
     def __init__(self):
-        self.k = 0.6  # Gain factor (smoothing)
+        self.k = 0.6
         self.last_val = None
     
     def update(self, val):
@@ -211,10 +221,6 @@ class KalmanFilter:
             return val
         self.last_val = self.last_val + self.k * (val - self.last_val)
         return self.last_val
-
-# Kalman Filters for each angle
-kf_left = KalmanFilter()
-kf_right = KalmanFilter()
 
 def calculate_angle(a, b, c):
     a, b, c = np.array(a), np.array(b), np.array(c)
@@ -229,6 +235,7 @@ class BADRProcessor(VideoTransformerBase):
         self.kf_left = KalmanFilter()
         self.kf_right = KalmanFilter()
         self.scores = {"left": [], "right": []}
+        self.last_feedback = ""
 
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -257,14 +264,12 @@ class BADRProcessor(VideoTransformerBase):
                 r_elbow = (lm[mp_pose.PoseLandmark.RIGHT_ELBOW.value].x*w, lm[mp_pose.PoseLandmark.RIGHT_ELBOW.value].y*h)
                 r_wrist = (lm[mp_pose.PoseLandmark.RIGHT_WRIST.value].x*w, lm[mp_pose.PoseLandmark.RIGHT_WRIST.value].y*h)
 
-                # Calculate angles based on exercise type
+                # Exercise Logic
                 if self.exercise_type == "Squat":
                     l_ang = calculate_angle(l_hip, l_kn, l_ank)
                     r_ang = calculate_angle(r_hip, r_kn, r_ank)
-                    # Kalman Smoothing
                     l_ang = self.kf_left.update(l_ang)
                     r_ang = self.kf_right.update(r_ang)
-                    
                     if l_ang < 160 and r_ang < 160:
                         if 70 < l_ang < 110 and 70 < r_ang < 110:
                             feedback, color = "✅ PERFECT SQUAT - 90°", (0,255,0)
@@ -280,7 +285,6 @@ class BADRProcessor(VideoTransformerBase):
                     r_ang = calculate_angle(r_sh, r_elbow, r_wrist)
                     l_ang = self.kf_left.update(l_ang)
                     r_ang = self.kf_right.update(r_ang)
-                    
                     if l_ang < 180 and r_ang < 180:
                         if 150 < l_ang < 180 and 150 < r_ang < 180:
                             feedback, color = "✅ PERFECT - Full Extension", (0,255,0)
@@ -296,7 +300,6 @@ class BADRProcessor(VideoTransformerBase):
                     r_ang = calculate_angle(r_hip, r_kn, r_ank)
                     l_ang = self.kf_left.update(l_ang)
                     r_ang = self.kf_right.update(r_ang)
-                    
                     if l_ang > 170 or r_ang > 170:
                         if l_ang > 170 and r_ang > 170:
                             feedback, color = "✅ PERFECT - Legs Apart", (0,255,0)
@@ -306,7 +309,6 @@ class BADRProcessor(VideoTransformerBase):
                         feedback, color = "🔄 Step legs apart", (255,255,0)
 
                 elif self.exercise_type == "Balance Test":
-                    # Check if one leg is lifted
                     l_ankle_y = lm[mp_pose.PoseLandmark.LEFT_ANKLE.value].y
                     r_ankle_y = lm[mp_pose.PoseLandmark.RIGHT_ANKLE.value].y
                     if abs(l_ankle_y - r_ankle_y) > 0.05:
@@ -314,27 +316,27 @@ class BADRProcessor(VideoTransformerBase):
                     else:
                         feedback, color = "⚠️ Lift one leg", (0,0,255)
 
-                # Display on screen
-                cv2.putText(img, f"L: {int(l_ang)}° | R: {int(r_ang)}°", (20,40), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2)
-                cv2.putText(img, feedback, (20,90), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 3)
-                cv2.putText(img, f"Test: {self.exercise_type}", (20,140), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
-                
-                mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
-                
                 # Store scores
                 self.scores["left"].append(l_ang)
                 self.scores["right"].append(r_ang)
 
-            except Exception as e:
-                cv2.putText(img, "Error detecting pose", (20,50), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
-        else:
-            cv2.putText(img, "No body detected", (20,80), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0,0,255), 3)
+                # Voice Feedback (If feedback changed)
+                if feedback != self.last_feedback:
+                    self.last_feedback = feedback
+                    # We will inject JS via session state in main thread, but here we just pass text.
 
+            except Exception as e:
+                cv2.putText(img, "Error", (20,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
+        else:
+            cv2.putText(img, "No body detected", (20,80), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0,0,255), 3)
+
+        cv2.putText(img, f"L: {int(l_ang)}° | R: {int(r_ang)}°", (20,40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2)
+        cv2.putText(img, feedback, (20,90), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 3)
+        cv2.putText(img, f"Test: {self.exercise_type}", (20,140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
+        mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+
+        # Store last feedback for TTS
+        self._feedback_text = feedback
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 # ====================================================================
@@ -362,13 +364,17 @@ if page == "Clinical Dashboard":
         st.session_state.current_patient = patient_id
         st.rerun()
 
-# ---------- ASSESSMENT (LIVE CAMERA) ----------
+# ---------- ASSESSMENT (LIVE CAMERA + VOICE) ----------
 elif page == "Assessment":
     st.markdown("## Live Clinical Assessment")
     st.markdown(f"**Patient:** {st.session_state.get('current_patient', 'Not Selected')}")
     st.markdown(f"**Test:** {st.session_state.get('exercise', 'Squat')}")
     
-    # Camera
+    # Voice Feedback Placeholder
+    feedback_container = st.empty()
+    # Create a placeholder for TTS JS code
+    tts_container = st.empty()
+
     RTC_CONFIG = RTCConfiguration({"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]})
     
     ctx = webrtc_streamer(
@@ -379,6 +385,13 @@ elif page == "Assessment":
     )
     
     if ctx and ctx.video_processor:
+        # Get feedback from the processor and speak it using Web Speech API
+        if hasattr(ctx.video_processor, '_feedback_text'):
+            current_feedback = ctx.video_processor._feedback_text
+            if current_feedback and "Stand" not in current_feedback:
+                # Speak the feedback using JavaScript TTS
+                speak_text(current_feedback)
+        
         if st.button("Save Assessment"):
             scores = ctx.video_processor.scores
             if scores["left"] and scores["right"]:
@@ -392,7 +405,7 @@ elif page == "Assessment":
                 save_assessments()
                 st.success("Assessment Saved!")
     
-    st.info("💡 Guide: Stand 6-8 feet away from camera. Follow instructions on screen.")
+    st.info("💡 Guide: Stand 6-8 feet away from camera. The AI will speak the feedback automatically.")
 
 # ---------- PATIENT RECORDS ----------
 elif page == "Patient Records":
@@ -422,12 +435,10 @@ elif page == "Reports":
         df = pd.DataFrame(st.session_state.assessments)
         st.dataframe(df, use_container_width=True)
         
-        # Chart
         fig = px.line(df, x='date', y=['left_avg', 'right_avg'], 
                       title='Progress Over Time', markers=True)
         st.plotly_chart(fig, use_container_width=True)
         
-        # PDF Report
         if st.button("Generate Clinical Report (PDF)"):
             buffer = io.BytesIO()
             c = canvas.Canvas(buffer, pagesize=A4)
