@@ -1,4 +1,6 @@
 import os
+os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'   # Protobuf फिक्स
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -22,11 +24,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ====================================================================
-# 🎤 Web Speech API (Browser TTS) - Offline Voice Feedback
-# ====================================================================
+# ---------- Web Speech API (Voice Feedback) ----------
 def speak_text(text):
-    """This injects JavaScript into the page to speak text using the browser's native speech engine."""
     js_code = f"""
     <script>
     function speakNow() {{
@@ -67,7 +66,7 @@ if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
     st.session_state.user = None
 
-# ---------- CSS: क्लिनिकल गवर्नमेंट थीम ----------
+# ---------- CSS थीम ----------
 st.markdown("""
 <style>
     .stApp { background-color: #F4F7FC; }
@@ -88,14 +87,6 @@ st.markdown("""
         font-weight: 700;
         font-size: 0.7rem;
     }
-    .gov-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 16px;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.04);
-        border-left: 6px solid #D4AF37;
-        margin-bottom: 1.2rem;
-    }
     .stat-box {
         background: white;
         padding: 1.2rem;
@@ -115,9 +106,7 @@ st.markdown("""
         text-align: center;
         border-top: 4px solid #D4AF37;
     }
-    section[data-testid="stSidebar"] {
-        background-color: #0B2A4A !important;
-    }
+    section[data-testid="stSidebar"] { background-color: #0B2A4A !important; }
     section[data-testid="stSidebar"] * { color: white !important; }
     .stButton button {
         background: #D4AF37 !important;
@@ -129,7 +118,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- SVG आइकॉन ----------
 def svg_icon(name, size=24, color="#FFFFFF"):
     icons = {
         "gov": f'<svg width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>',
@@ -182,9 +170,7 @@ with st.sidebar:
             ["Clinical Dashboard", "Assessment", "Patient Records", "Reports", "Settings"]
         )
 
-# ====================================================================
-# 📂 मरीज डेटा
-# ====================================================================
+# ---------- डेटा ----------
 if 'patients' not in st.session_state:
     try:
         st.session_state.patients = pd.read_csv('patients.csv').to_dict('records')
@@ -203,18 +189,23 @@ def save_patients():
 def save_assessments():
     pd.DataFrame(st.session_state.assessments).to_csv('assessments.csv', index=False)
 
-# ====================================================================
-# 🧠 AI POSE ENGINE (MediaPipe + Kalman Filter)
-# ====================================================================
-import mediapipe as mp
-mp_pose = mp.solutions.pose
-mp_drawing = mp.solutions.drawing_utils
+# ---------- 🔥 FIX: MediaPipe Import with Fallback ----------
+try:
+    import mediapipe as mp
+    mp_pose = mp.solutions.pose
+    mp_drawing = mp.solutions.drawing_utils
+    print("Using mp.solutions")
+except AttributeError:
+    # Fallback: direct import from internal module
+    from mediapipe.python.solutions import pose as mp_pose
+    from mediapipe.python.solutions import drawing_utils as mp_drawing
+    print("Using direct import")
+
+# ---------- AI Engine ----------
 class KalmanFilter:
-    """Simple Kalman Filter for smoothing angle measurements"""
     def __init__(self):
         self.k = 0.6
         self.last_val = None
-    
     def update(self, val):
         if self.last_val is None:
             self.last_val = val
@@ -248,7 +239,6 @@ class BADRProcessor(VideoTransformerBase):
         if results.pose_landmarks:
             lm = results.pose_landmarks.landmark
             try:
-                # Left side
                 l_hip = (lm[mp_pose.PoseLandmark.LEFT_HIP.value].x*w, lm[mp_pose.PoseLandmark.LEFT_HIP.value].y*h)
                 l_kn = (lm[mp_pose.PoseLandmark.LEFT_KNEE.value].x*w, lm[mp_pose.PoseLandmark.LEFT_KNEE.value].y*h)
                 l_ank = (lm[mp_pose.PoseLandmark.LEFT_ANKLE.value].x*w, lm[mp_pose.PoseLandmark.LEFT_ANKLE.value].y*h)
@@ -256,7 +246,6 @@ class BADRProcessor(VideoTransformerBase):
                 l_elbow = (lm[mp_pose.PoseLandmark.LEFT_ELBOW.value].x*w, lm[mp_pose.PoseLandmark.LEFT_ELBOW.value].y*h)
                 l_wrist = (lm[mp_pose.PoseLandmark.LEFT_WRIST.value].x*w, lm[mp_pose.PoseLandmark.LEFT_WRIST.value].y*h)
 
-                # Right side
                 r_hip = (lm[mp_pose.PoseLandmark.RIGHT_HIP.value].x*w, lm[mp_pose.PoseLandmark.RIGHT_HIP.value].y*h)
                 r_kn = (lm[mp_pose.PoseLandmark.RIGHT_KNEE.value].x*w, lm[mp_pose.PoseLandmark.RIGHT_KNEE.value].y*h)
                 r_ank = (lm[mp_pose.PoseLandmark.RIGHT_ANKLE.value].x*w, lm[mp_pose.PoseLandmark.RIGHT_ANKLE.value].y*h)
@@ -264,7 +253,6 @@ class BADRProcessor(VideoTransformerBase):
                 r_elbow = (lm[mp_pose.PoseLandmark.RIGHT_ELBOW.value].x*w, lm[mp_pose.PoseLandmark.RIGHT_ELBOW.value].y*h)
                 r_wrist = (lm[mp_pose.PoseLandmark.RIGHT_WRIST.value].x*w, lm[mp_pose.PoseLandmark.RIGHT_WRIST.value].y*h)
 
-                # Exercise Logic
                 if self.exercise_type == "Squat":
                     l_ang = calculate_angle(l_hip, l_kn, l_ank)
                     r_ang = calculate_angle(r_hip, r_kn, r_ank)
@@ -316,14 +304,8 @@ class BADRProcessor(VideoTransformerBase):
                     else:
                         feedback, color = "⚠️ Lift one leg", (0,0,255)
 
-                # Store scores
                 self.scores["left"].append(l_ang)
                 self.scores["right"].append(r_ang)
-
-                # Voice Feedback (If feedback changed)
-                if feedback != self.last_feedback:
-                    self.last_feedback = feedback
-                    # We will inject JS via session state in main thread, but here we just pass text.
 
             except Exception as e:
                 cv2.putText(img, "Error", (20,50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
@@ -335,15 +317,10 @@ class BADRProcessor(VideoTransformerBase):
         cv2.putText(img, f"Test: {self.exercise_type}", (20,140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2)
         mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
-        # Store last feedback for TTS
         self._feedback_text = feedback
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# ====================================================================
-# 🧭 पेज हैंडलिंग
-# ====================================================================
-
-# ---------- CLINICAL DASHBOARD ----------
+# ---------- पेज ----------
 if page == "Clinical Dashboard":
     st.markdown("## Clinical Dashboard")
     col1, col2, col3 = st.columns(3)
@@ -358,40 +335,28 @@ if page == "Clinical Dashboard":
     st.subheader("Quick Assessment")
     exercise = st.selectbox("Select Test", ["Squat", "Shoulder Flexion", "Hip Abduction", "Balance Test"])
     patient_id = st.selectbox("Select Patient", [p['name'] for p in st.session_state.patients] if st.session_state.patients else ["No Patient"])
-    
     if st.button("Start Assessment"):
         st.session_state.exercise = exercise
         st.session_state.current_patient = patient_id
         st.rerun()
 
-# ---------- ASSESSMENT (LIVE CAMERA + VOICE) ----------
 elif page == "Assessment":
     st.markdown("## Live Clinical Assessment")
     st.markdown(f"**Patient:** {st.session_state.get('current_patient', 'Not Selected')}")
     st.markdown(f"**Test:** {st.session_state.get('exercise', 'Squat')}")
-    
-    # Voice Feedback Placeholder
-    feedback_container = st.empty()
-    # Create a placeholder for TTS JS code
-    tts_container = st.empty()
 
     RTC_CONFIG = RTCConfiguration({"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]})
-    
     ctx = webrtc_streamer(
         key="badr-clinical",
         video_processor_factory=lambda: BADRProcessor(st.session_state.get('exercise', 'Squat')),
         rtc_configuration=RTC_CONFIG,
         media_stream_constraints={"video": {"width": 640, "height": 480}, "audio": False},
     )
-    
     if ctx and ctx.video_processor:
-        # Get feedback from the processor and speak it using Web Speech API
         if hasattr(ctx.video_processor, '_feedback_text'):
             current_feedback = ctx.video_processor._feedback_text
             if current_feedback and "Stand" not in current_feedback:
-                # Speak the feedback using JavaScript TTS
                 speak_text(current_feedback)
-        
         if st.button("Save Assessment"):
             scores = ctx.video_processor.scores
             if scores["left"] and scores["right"]:
@@ -404,10 +369,8 @@ elif page == "Assessment":
                 })
                 save_assessments()
                 st.success("Assessment Saved!")
-    
-    st.info("💡 Guide: Stand 6-8 feet away from camera. The AI will speak the feedback automatically.")
+    st.info("💡 Stand 6-8 feet away. AI speaks feedback automatically.")
 
-# ---------- PATIENT RECORDS ----------
 elif page == "Patient Records":
     st.markdown("## Patient Records")
     with st.form("add_patient"):
@@ -428,17 +391,13 @@ elif page == "Patient Records":
     if st.session_state.patients:
         st.dataframe(pd.DataFrame(st.session_state.patients), use_container_width=True)
 
-# ---------- REPORTS ----------
 elif page == "Reports":
     st.markdown("## Clinical Reports")
     if st.session_state.assessments:
         df = pd.DataFrame(st.session_state.assessments)
         st.dataframe(df, use_container_width=True)
-        
-        fig = px.line(df, x='date', y=['left_avg', 'right_avg'], 
-                      title='Progress Over Time', markers=True)
+        fig = px.line(df, x='date', y=['left_avg', 'right_avg'], title='Progress Over Time', markers=True)
         st.plotly_chart(fig, use_container_width=True)
-        
         if st.button("Generate Clinical Report (PDF)"):
             buffer = io.BytesIO()
             c = canvas.Canvas(buffer, pagesize=A4)
@@ -449,7 +408,6 @@ elif page == "Reports":
             c.drawString(40, 830, "NPRC B.A.D.R v5.0")
             c.setFont("Helvetica", 10)
             c.drawString(40, 810, "Clinical Assessment Report")
-            
             c.setFillColorRGB(0,0,0)
             y = 750
             c.setFont("Helvetica-Bold", 12)
@@ -461,7 +419,6 @@ elif page == "Reports":
             c.drawString(60, y, f"Average Left Angle: {df['left_avg'].mean():.1f}°")
             y -= 20
             c.drawString(60, y, f"Average Right Angle: {df['right_avg'].mean():.1f}°")
-            
             c.setFillColorRGB(0.043, 0.165, 0.294)
             c.rect(0, 20, 600, 30, fill=1)
             c.setFillColorRGB(1,1,1)
@@ -474,16 +431,12 @@ elif page == "Reports":
     else:
         st.info("No assessments recorded yet.")
 
-# ---------- SETTINGS ----------
 elif page == "Settings":
     st.markdown("## System Settings")
     st.markdown("---")
     st.markdown("### Data Management")
     if st.button("Export All Data (CSV)"):
-        data = {
-            "patients": pd.DataFrame(st.session_state.patients),
-            "assessments": pd.DataFrame(st.session_state.assessments)
-        }
+        data = {"patients": pd.DataFrame(st.session_state.patients), "assessments": pd.DataFrame(st.session_state.assessments)}
         zip_buffer = io.BytesIO()
         import zipfile
         with zipfile.ZipFile(zip_buffer, 'w') as zf:
@@ -494,9 +447,7 @@ elif page == "Settings":
         b64 = base64.b64encode(zip_buffer.getvalue()).decode()
         st.markdown(f'<a href="data:application/zip;base64,{b64}" download="NPRC_Data_Backup.zip" style="background:#0B2A4A; color:white; padding:10px 20px; border-radius:30px; text-decoration:none;">Download Backup</a>', unsafe_allow_html=True)
 
-# ====================================================================
-# 📌 फुटर
-# ====================================================================
+# ---------- फुटर ----------
 st.markdown(f"""
 <div class="footer">
     <div style="display:flex; justify-content:space-between; flex-wrap:wrap;">
