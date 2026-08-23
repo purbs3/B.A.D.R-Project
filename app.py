@@ -206,9 +206,9 @@ def save_assessments():
 # ====================================================================
 # 🧠 AI POSE ENGINE (MediaPipe + Kalman Filter)
 # ====================================================================
-from mediapipe.python.solutions import pose as mp_pose
-from mediapipe.python.solutions import drawing_utils as mp_drawing
-
+import mediapipe as mp
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
 class KalmanFilter:
     """Simple Kalman Filter for smoothing angle measurements"""
     def __init__(self):
